@@ -84,8 +84,8 @@ FreeListAllocator::FreeListAllocator(std::size_t size) {
     head_ = block; // start of block chain
 }
 
-
-void* FreeListAllocator:: allocate(std::size_t size) {
+/*           // till stage 3 
+void* FreeListAllocator:: allocate(std::size_t size) {                 //till stage 3
         
         FreeBlock* curr = head_;
 
@@ -156,8 +156,74 @@ void* FreeListAllocator:: allocate(std::size_t size) {
                  return nullptr; // out of memory
     }
 
+    */
 
 
+    //stage 4 alignment allocate(size,alignment) why alignment because
+    // for alignment we require new metadata for setting the aligned payload for it
+
+
+    void*  FreeListAllocator:: allocate(std::size_t size, std::size_t alignment){
+
+        FreeBlock* curr = head_;
+
+    while (curr) {
+        if (!curr->free) {
+            curr = curr->next;
+            continue;
+        }
+
+        std::byte* block_start = reinterpret_cast<std::byte*>(curr);
+
+        // Step 1: compute raw user pointer (after header)
+        uintptr_t raw_data = reinterpret_cast<uintptr_t>(
+            block_start + sizeof(FreeBlock)
+        );
+
+        // Step 2: align it
+        uintptr_t aligned_data = alignForward(raw_data, alignment);
+
+        // Step 3: compute adjustment
+        uint8_t adjustment = static_cast<uint8_t>(aligned_data - raw_data);
+
+        // Step 4: total required space inside block
+        size_t total_size = size + adjustment;
+
+        if (curr->size < total_size) {
+            curr = curr->next;
+            continue;
+        }
+
+        // Step 5: split if enough space remains
+        if (curr->size >= total_size + sizeof(FreeBlock)) {
+            split(curr, total_size);
+        }
+
+        // Step 6: mark as used
+        curr->free = false;
+        curr->adjustment = adjustment;
+
+        // Step 7: return aligned pointer
+        return reinterpret_cast<void*>(aligned_data);
+    }
+
+    return nullptr; // no suitable block
+
+
+    }
+
+
+    //stage 4: alignment allocate helper to forward it
+    
+        uintptr_t FreeListAllocator:: alignForward(uintptr_t ptr, size_t alignment) {
+    uintptr_t mask = alignment - 1;
+    return (ptr + mask) & ~mask;
+    }
+
+
+    //stage 3 split function
+
+/*
     void FreeListAllocator:: split(FreeBlock* block, std::size_t size) {
     std::byte* block_start = reinterpret_cast<std::byte*>(block);
 
@@ -179,11 +245,42 @@ void* FreeListAllocator:: allocate(std::size_t size) {
     block->next = new_block;
     block->size = size;
 }
+*/
+
+
+//stage 4 split function
+
+void FreeListAllocator::split(FreeBlock* block, std::size_t size) {
+    // Check if we can actually split
+    if (block->size < size + sizeof(FreeBlock)) {
+        return; // not enough space to split safely
+    }
+
+    std::byte* block_start = reinterpret_cast<std::byte*>(block);
+
+    FreeBlock* new_block = reinterpret_cast<FreeBlock*>(
+        block_start + sizeof(FreeBlock) + size
+    );
+
+    new_block->size = block->size - size - sizeof(FreeBlock);
+    new_block->free = true;
+
+    // link fix
+    new_block->next = block->next;
+    new_block->prev = block;
+
+    if (block->next)
+        block->next->prev = new_block;
+
+    block->next = new_block;
+    block->size = size;
+}
 
 
 
 
-
+    //stage 3 deallocate()
+/*
     void FreeListAllocator::deallocate(void* ptr) {
     if (!ptr) return;
 
@@ -228,6 +325,84 @@ std::cout << "Freeing ptr: " << ptr << "\n";
 
     }
 }
+*/
+
+//stage 4 helper functions for coalesce function
+
+   FreeListAllocator:: FreeBlock*  FreeListAllocator:: nextPhys(FreeBlock* b) {     //targeting the next block
+    auto* p = reinterpret_cast<std::byte*>(b);
+    return reinterpret_cast<FreeBlock*>(p + sizeof(FreeBlock) + b->size);
+}
+
+
+//stage 4 helper function for coalesce function
+    bool FreeListAllocator:: withinHeap(void* p) const {
+        auto* b = static_cast<std::byte*> (p);
+
+    return p >= buffer_ && p < (buffer_+capacity_);
+    }
+
+
+    //stage 4 coalesce block
+
+  void FreeListAllocator::coalesce(FreeListAllocator::FreeBlock* block) {
+    if (!block) return;
+
+    // ---- merge NEXT
+    FreeBlock* next = nextPhys(block);
+    if (withinHeap(next) && next->free) {
+        block->size += sizeof(FreeBlock) + next->size;
+
+        block->next = next->next;
+        if (next->next)
+            next->next->prev = block;
+    }
+
+    // ---- merge PREV (with adjacency check)
+    FreeBlock* prev = block->prev;
+    if (prev && prev->free) {
+        FreeBlock* prev_next = nextPhys(prev);
+
+        if (prev_next == block) {
+            prev->size += sizeof(FreeBlock) + block->size;
+
+            prev->next = block->next;
+            if (block->next)
+                block->next->prev = prev;
+        }
+    }
+}
+
+
+        //stage 4 deallocate()
+void FreeListAllocator::deallocate(void* ptr) {
+    if (!ptr) return;
+
+    std::byte* aligned_ptr = static_cast<std::byte*>(ptr);
+
+    // Step 1: get header just before aligned memory
+    FreeBlock* block = reinterpret_cast<FreeBlock*>(
+        aligned_ptr - sizeof(FreeBlock)
+    );
+    
+
+    // Step 2: move back to actual block start using adjustment
+    block = reinterpret_cast<FreeBlock*>(
+           
+        reinterpret_cast<std::byte*>(block) - block->adjustment
+    );
+
+    // Step 3: mark free
+    block->free = true;
+
+    // Step 4: coalesce with neighbors
+    coalesce(block);
+}
+
+
+
+
+
 
 
 

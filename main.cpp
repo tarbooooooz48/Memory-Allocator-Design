@@ -191,49 +191,78 @@ arena.reset();   // bulk free
     //test 4: Coalescing
         //trying to allocate a used memory again and as well as which was splitted 
 
-        std::cout << "=== Coalescing Test ===\n";
-        std::cout<<"ALLOCATOR 3 (256)"<<std::endl;
-    FreeListAllocator alloc3(256);
+    //     std::cout << "=== Coalescing Test ===\n";
+    //     std::cout<<"ALLOCATOR 3 (256)"<<std::endl;
+    // FreeListAllocator alloc3(256);
 
    
 
-    void* p = alloc3.allocate(32);
+    // void* p = alloc3.allocate(32);
    
 
-    void* q = alloc3.allocate(32);
+    // void* q = alloc3.allocate(32);
   
 
-    void* r = alloc3.allocate(32);
+    // void* r = alloc3.allocate(32);
    
 
 
 
-    // Layout: [p][q][r]
+    // // Layout: [p][q][r]
 
-    std::cout<<std:: endl;
+    // std::cout<<std:: endl;
 
-    std::cout<< "Layout: [p][q][r] "<<p <<"   "<< q << "   "<<r<<std::endl;
+    // std::cout<< "Layout: [p][q][r] "<<p <<"   "<< q << "   "<<r<<std::endl;
 
-    alloc3.deallocate(q);
+    // alloc3.deallocate(q);
    
 
-    alloc3.deallocate(p);
+    // alloc3.deallocate(p);
    
 
-    std::cout<<"Deallocated p and q"<<std::endl;
+    // std::cout<<"Deallocated p and q"<<std::endl;
 
-    // Now p+q should be one big block
+    // // Now p+q should be one big block
 
-    void* big = alloc3.allocate(60); // requires merged space
+    // void* big = alloc3.allocate(60); // requires merged space
 
-    std::cout << "big: " << big << "\n";
+    // std::cout << "big: " << big << "\n";
 
-    assert(big == p); // should reuse merged region
+    // assert(big == p); // should reuse merged region
 
-    std::cout << "PASS: Coalescing (prev) works\n\n";
+    // std::cout << "PASS: Coalescing (prev) works\n\n";
 
-    alloc3.dump();
-    std::cout<<"\n"<<std::endl;
+    // alloc3.dump();
+    // std::cout<<"\n"<<std::endl;
+
+
+    // step 3 done 
+
+
+    //=======================================STEP 4 Alignment===========================
+
+    //test 1
+
+    FreeListAllocator alloc3(256);
+
+    void* a = alloc3.allocate(32, 8);
+void* b = alloc3.allocate(32, 8);
+void* c = alloc3.allocate(32, 8);
+
+cout<<" allocated a , b , c "<<endl;
+alloc3.dump();
+
+alloc3.deallocate(b);
+alloc3.deallocate(a);   // should merge A+B
+alloc3.deallocate(c);   // should merge all
+
+void* d = alloc3.allocate(96, 8);
+alloc3.dump();
+assert(d != nullptr);
+
+
+
+
 
 cout<< "program looks good"<<endl;
     return 0;
